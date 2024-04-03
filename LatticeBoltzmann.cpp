@@ -70,35 +70,11 @@ int main(){
 		exit(1);
 	}
 	
-	int n = 100;
-	Buffer bufferA(context, CL_MEM_READ_WRITE, sizeof(int)*n);
-	Buffer bufferB(context, CL_MEM_READ_WRITE, sizeof(int)*n);
-	Buffer bufferC(context, CL_MEM_READ_WRITE, sizeof(int)*n);
-	
-	int a[n];
-	int b[n];
-	for(int i = 0; i < n; i++){
-		a[i] = i;
-		b[i] = i;
-	}
-	
 	CommandQueue queue(context, device);
-	queue.enqueueWriteBuffer(bufferA, CL_TRUE, 0, sizeof(int)*n, a);
-	queue.enqueueWriteBuffer(bufferB, CL_TRUE, 0, sizeof(int)*n, b);
-	
-	KernelFunctor<Buffer&, Buffer&, Buffer&> add(program, "add");
 	
 	auto start = high_resolution_clock::now();
-	add(EnqueueArgs(queue, NDRange(n)), bufferA, bufferB, bufferC);
+	
 	auto stop = high_resolution_clock::now();
-	
-	int c[n];
-	queue.enqueueReadBuffer(bufferC, CL_TRUE, 0, sizeof(int)*n, c);
-	
-	std::cout << "A\tB\tC\n";
-	for(int i = 0; i < n; i++){
-		std::cout << a[i] << "\t" << b[i] << "\t" << c[i] << std::endl;
-	}
 	
 	std::cout << "Time: " << duration_cast<nanoseconds>(stop - start).count() << std::endl;
 }

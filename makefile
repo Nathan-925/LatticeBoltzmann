@@ -18,7 +18,7 @@ lattice: $(OBJ)
 $(BUILD_PATH)/clsrc.o: $(BUILD_PATH)/clsrc.cpp
 	g++ -Wall -c -o $@ $^ $(LIB) $(INC)
 	
-$(BUILD_PATH)/%.o: %.cpp | $(CLCPP) $(BUILD_PATH)
+$(BUILD_PATH)/%.o: %.cpp $(CLCPP) | $(BUILD_PATH)
 	g++ -Wall -c -o $@ $< $(LIB) $(INC)
 
 $(CL_PATH)/%.cpp: %.cl | $(CL_PATH)

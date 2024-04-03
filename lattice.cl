@@ -2,7 +2,8 @@ enum State{
 	FLUID, SOLID
 };
 
-void kernel LBCollProp(const int nx, const int ny, global unsigned int* states,
+void kernel LBCollProp(const int nx, const int ny, local float* m, local float* mInverse,
+					   local float* feOut, local float* fwOut, local float* fneOut, local float* fnwOut, local float* fswOut, local float* fseOut, global unsigned int* states,
 					   global float* fr0, global float* fe0, global float* fn0, global float* fw0, global float* fs0, global float* fne0, global float* fnw0, global float* fsw0, global float* fse0,
 					   global float* fr1, global float* fe1, global float* fn1, global float* fw1, global float* fs1, global float* fne1, global float* fnw1, global float* fsw1, global float* fse1){
 	const int gx = get_global_id(0);
@@ -11,13 +12,6 @@ void kernel LBCollProp(const int nx, const int ny, global unsigned int* states,
 	const int localSize = get_local_size(0);
 	
 	int k = nx*gy + gx;
-	
-	local float feOut[localSize];
-	local float fwOut[localSize];
-	local float fneOut[localSize];
-	local float fnwOut[localSize];
-	local float fseOut[localSize];
-	local float fswOut[localSize];
 	
 	float frIn = fr0[k];
 	float feIn = fe0[k];
@@ -64,7 +58,7 @@ void kernel LBCollProp(const int nx, const int ny, global unsigned int* states,
 		fswOut[lx-1] = fswIn;
 	}
 	
-	barrier();
+	barrier(CLK_LOCAL_MEM_FENCE);
 	
 	if(gx > 0 && gy > 0 && gx < nx-1 && gy < ny-1){
 		fr1[k] = frIn;
