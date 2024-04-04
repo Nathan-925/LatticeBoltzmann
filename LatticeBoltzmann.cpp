@@ -41,13 +41,6 @@ float* getMatrixM(float c){
 }
 
 int main(){
-	float* m = getMatrixM(1.5);
-	for(int i = 0; i < 9; i++){
-		for(int j = 0; j < 9; j++){
-			printf("%.2f\t", m[i*9+j]);
-		}
-		std::cout << std::endl;
-	}
 	
 	std::vector<Platform> platforms;
 	Platform::get(&platforms);
@@ -58,7 +51,9 @@ int main(){
 	platform.getDevices(CL_DEVICE_TYPE_ALL, &devices);
 	Device device = devices[0];
 	std::cout << "Using Device: " << device.getInfo<CL_DEVICE_NAME>() << std::endl;
-	std::cout << "Max Work Size: " << device.getInfo<CL_DEVICE_MAX_WORK_ITEM_SIZES>()[0] << std::endl;
+	std::cout << "Max Work Group Size: " << device.getInfo<CL_DEVICE_MAX_WORK_GROUP_SIZE>() << std::endl;
+	int numThreads = device.getInfo<CL_DEVICE_MAX_WORK_GROUP_SIZE>();
+	std::cout << "Using Work Group Size: " << numThreads << std::endl;
 	
 	Context context({device});
 	Program::Sources sources;
