@@ -2,33 +2,7 @@ enum State{
 	FLUID, SOLID
 };
 
-constant float m[81] = {
-	1, 1, 1, 1, 1, 1, 1, 1, 1,
-	0, 1, 0, -1, 0, 1, -1, -1, 1,
-	0, 0, 1, 0, -1, 1, 1, -1, -1,
-	-2, 1, 1, 1, 1, 4, 4, 4, 4,
-	0, 1, -1, 1, -1, 0, 0, 0, 0,
-	0, 0, 0, 0, 0, 1, -1, 1, -1,
-	0, -1, 0, 1, 0, 2, -2, -2, 2,
-	0, 0, -1, 0, 1, 2, 2, -2, -2,
-	1, -2, -2, -2, -2, 4, 4, 4, 4
-};
-
-constant float mInverse[81] = {
-	4.0/9, 0, 0, -2.0/9, 0, 0, 0, 0, 1.0/9,
-	1.0/9, 1.0/3, 0, 1.0/36, 1.0/4, 0, -1.0/6, 0, -1.0/18,
-	1.0/9, 0, 1.0/3, 1.0/36, -1.0/4, 0, 0, -1.0/6, -1.0/18,
-	1.0/9, -1.0/3, 0, 1.0/36, 1.0/4, 0, 1.0/6, 0, -1.0/18,
-	1.0/9, 0, -1.0/3, 1.0/36, -1.0/4, 0, 0, 1.0/6, -1.0/18,
-	1.0/36, 1.0/12, 1.0/12, 1.0/36, 0, 1.0/4, 1.0/12, 1.0/12, 1.0/36,
-	1.0/36, -1.0/12, 1.0/12, 1.0/36, 0, -1.0/4, -1.0/12, 1.0/12, 1.0/36,
-	1.0/36, -1.0/12, -1.0/12, 1.0/36, 0, 1.0/4, -1.0/12, -1.0/12, 1.0/36,
-	1.0/36, 1.0/12, -1.0/12, 1.0/36, 0, -1.0/4, 1.0/12, -1.0/12, 1.0/36,
-};
-
-
-void kernel LBCollProp(const int nx, const int ny, const float2 g, const float4 s,
-					   global unsigned int* states, local float* feOut, local float* fwOut, local float* fneOut, local float* fnwOut, local float* fswOut, local float* fseOut,
+void kernel LBCollProp(const int nx, const int ny, const float2 g, const float4 s, global unsigned int* states,
 					   global float* fr0, global float* fe0, global float* fn0, global float* fw0, global float* fs0, global float* fne0, global float* fnw0, global float* fsw0, global float* fse0,
 					   global float* fr1, global float* fe1, global float* fn1, global float* fw1, global float* fs1, global float* fne1, global float* fnw1, global float* fsw1, global float* fse1){
 	const int gx = get_global_id(0);
@@ -37,6 +11,13 @@ void kernel LBCollProp(const int nx, const int ny, const float2 g, const float4 
 	const int localSize = get_local_size(0);
 	
 	int k = nx*gy + gx;
+	
+	local float feOut[GROUP_SIZE];
+	local float fwOut[GROUP_SIZE];
+	local float fneOut[GROUP_SIZE];
+	local float fnwOut[GROUP_SIZE];
+	local float fswOut[GROUP_SIZE];
+	local float fseOut[GROUP_SIZE];
 	
 	float fIn[9];
 	fIn[0] = fr0[k];
@@ -51,9 +32,34 @@ void kernel LBCollProp(const int nx, const int ny, const float2 g, const float4 
 	
 	unsigned int state = states[k];
 	if(state == FLUID){
+		float m[81] = {
+			1, 1, 1, 1, 1, 1, 1, 1, 1,
+			0, 1, 0, -1, 0, 1, -1, -1, 1,
+			0, 0, 1, 0, -1, 1, 1, -1, -1,
+			-2, 1, 1, 1, 1, 4, 4, 4, 4,
+			0, 1, -1, 1, -1, 0, 0, 0, 0,
+			0, 0, 0, 0, 0, 1, -1, 1, -1,
+			0, -1, 0, 1, 0, 2, -2, -2, 2,
+			0, 0, -1, 0, 1, 2, 2, -2, -2,
+			1, -2, -2, -2, -2, 4, 4, 4, 4
+		};
+
+		float mInverse[81] = {
+			4.0/9, 0, 0, -2.0/9, 0, 0, 0, 0, 1.0/9,
+			1.0/9, 1.0/3, 0, 1.0/36, 1.0/4, 0, -1.0/6, 0, -1.0/18,
+			1.0/9, 0, 1.0/3, 1.0/36, -1.0/4, 0, 0, -1.0/6, -1.0/18,
+			1.0/9, -1.0/3, 0, 1.0/36, 1.0/4, 0, 1.0/6, 0, -1.0/18,
+			1.0/9, 0, -1.0/3, 1.0/36, -1.0/4, 0, 0, 1.0/6, -1.0/18,
+			1.0/36, 1.0/12, 1.0/12, 1.0/36, 0, 1.0/4, 1.0/12, 1.0/12, 1.0/36,
+			1.0/36, -1.0/12, 1.0/12, 1.0/36, 0, -1.0/4, -1.0/12, 1.0/12, 1.0/36,
+			1.0/36, -1.0/12, -1.0/12, 1.0/36, 0, 1.0/4, -1.0/12, -1.0/12, 1.0/36,
+			1.0/36, 1.0/12, -1.0/12, 1.0/36, 0, -1.0/4, 1.0/12, -1.0/12, 1.0/36,
+		};
+		
 		float mom[9] = {0};
-		for(int i = 0; i < 9; i++){
-			for(int j = 0; j < 9; j++){
+		int i, j;
+		for(i = 0; i < 9; i++){
+			for(j = 0; j < 9; j++){
 				mom[i] += m[i*9+j]*fIn[j];
 			}
 		}
@@ -69,8 +75,8 @@ void kernel LBCollProp(const int nx, const int ny, const float2 g, const float4 
 		kVec[7] = -s.z*mom[7];
 		kVec[8] = -s.w*mom[8];
 		
-		for(int i = 0; i < 9; i++){
-			for(int j = 0; j < 9; j++){
+		for(i = 0; i < 9; i++){
+			for(j = 0; j < 9; j++){
 				fIn[i] += mInverse[i*9+j]*kVec[j];
 			}
 		}
@@ -129,7 +135,6 @@ void kernel LBCollProp(const int nx, const int ny, const float2 g, const float4 
 void kernel LBExchange(const int nx, const int ny, const int groupWidth, global float* fe1, global float* fw1, global float* fne1, global float* fnw1, global float* fsw1, global float* fse1){
 	const int gx = get_global_id(0);
 	const int gy = get_global_id(1);
-	const int lx = get_local_id(0);
 	
 	int xStart, xTarget;
 	int start, target;

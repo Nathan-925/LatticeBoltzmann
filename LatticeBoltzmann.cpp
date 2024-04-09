@@ -1,6 +1,7 @@
 #include <iostream>
 #include <cstdio>
 #include <cmath>
+#include <string>
 #include <chrono>
 #include <CL/opencl.hpp>
 
@@ -12,6 +13,13 @@ using namespace std::chrono;
 enum State{
 	FLUID, SOLID
 };
+
+void errCheck(cl_int err, std::string s){
+	if(err != CL_SUCCESS){
+		printf("Error %d: %s\n", err, s.c_str());
+		exit(1);
+	}
+}
 
 int main(){
 	
@@ -27,13 +35,14 @@ int main(){
 	std::cout << "Max Work Group Size: " << device.getInfo<CL_DEVICE_MAX_WORK_GROUP_SIZE>() << std::endl;
 	int groupSize = device.getInfo<CL_DEVICE_MAX_WORK_GROUP_SIZE>();
 	std::cout << "Using Work Group Size: " << groupSize << std::endl;
+	std::cout << "Local Memory Size: " << device.getInfo<CL_DEVICE_LOCAL_MEM_SIZE >() << std::endl;
 	
 	Context context({device});
 	Program::Sources sources;
 	sources.push_back({lattice, sizeof(lattice)-1});
 	
 	Program program(context, sources);
-	if(program.build({device}) != CL_SUCCESS){
+	if(program.build({device}, ("-DGROUP_SIZE="+std::to_string(groupSize)).c_str()) != CL_SUCCESS){
 		std::cout << "Error Building:\n" << program.getBuildInfo<CL_PROGRAM_BUILD_LOG>(device) << std::endl;
 		exit(1);
 	}
@@ -49,41 +58,69 @@ int main(){
 	printf("Grid Size: %dx%d\n", nx, ny);
 	std::cout << numSteps << " Steps" << std::endl;
 	
-	int bufferSize = nx*ny*sizeof(float);
+	int bufferSize = nx*ny*sizeof(cl_float);
 	Buffer f0[9];
 	Buffer f1[9];
+	
+	
 	for(int i = 0; i < 9; i++){
 		f0[i] = Buffer(context, CL_MEM_READ_WRITE, bufferSize);
+		float* fMap = (float*)queue.enqueueMapBuffer(f0[i], true, CL_MAP_WRITE , 0, bufferSize);
+		for(int j = 0; j < nx*ny; j++){
+			fMap[j] = 0;
+		}
+		queue.enqueueUnmapMemObject(f0[i], fMap);
+		
 		f1[i] = Buffer(context, CL_MEM_READ_WRITE, bufferSize);
 	}
-	Buffer states(context, CL_MEM_READ_WRITE, nx*ny*sizeof(unsigned int));
+	
+	Buffer states(context, CL_MEM_READ_WRITE, nx*ny*sizeof(cl_uint));
+	cl_uint* sMap = (cl_uint*)queue.enqueueMapBuffer(states, true, CL_MAP_WRITE , 0, nx*ny*sizeof(cl_uint));
+	for(int i = 0; i < nx*ny; i++){
+		sMap[i] = FLUID;
+	}
+	queue.enqueueUnmapMemObject(states, sMap);
+	
+	cl_int result;
 	
 	Kernel lbCollProp(program, "LBCollProp");
-	lbCollProp.setArg(0, nx);
-	lbCollProp.setArg(1, ny);
-	lbCollProp.setArg(2, g);
-	lbCollProp.setArg(3, s);
-	lbCollProp.setArg(4, states);
+	result = lbCollProp.setArg(0, (cl_int)nx);
+	errCheck(result, "LBCollProp arg 0");
+	result = lbCollProp.setArg(1, (cl_int)ny);
+	errCheck(result, "LBCollProp arg 1");
+	result = lbCollProp.setArg(2, g);
+	errCheck(result, "LBCollProp arg 2");
+	result = lbCollProp.setArg(3, s);
+	errCheck(result, "LBCollProp arg 3");
+	result = lbCollProp.setArg(4, states);
+	errCheck(result, "LBCollProp arg 4");
 	
 	Kernel lbExchange(program, "LBExchange");
-	lbExchange.setArg(0, nx);
-	lbExchange.setArg(1, ny);
-	lbExchange.setArg(2, groupSize);
+	lbExchange.setArg(0, (cl_int)nx);
+	lbExchange.setArg(1, (cl_int)ny);
+	lbExchange.setArg(2, (cl_int)groupSize);
 	
 	Event lbCollPropEvent;
-	Event lbExchangePre[] = {lbCollPropEvent};
+	Event lbExchangeEvent;
+	std::vector<Event> lbExchangePre{lbCollPropEvent};
 	
 	Buffer* fIn = f0;
 	Buffer* fOut = f1;
 	
 	auto start = high_resolution_clock::now();
+	auto stepTime = start;
+	auto avgStepTime = high_resolution_clock::duration::zero();
 	
 	for(int i = 0; i < numSteps; i++){
 		
 		for(int j = 0; j < 9; j++){
-			lbCollProp.setArg(i+11, fIn[i]);
-			lbCollProp.setArg(i+20, fOut[i]);
+			printf("%d ", j);
+			result = lbCollProp.setArg(j+5, fIn[j]);
+			errCheck(result, "LBCollProp arg "+std::to_string(j+5));
+			result = lbCollProp.setArg(j+14, fOut[j]);
+			errCheck(result, "LBCollProp arg "+std::to_string(j+14));
 		}
+		std::cout << std::endl;
 		
 		lbExchange.setArg(3, fOut[1]);
 		lbExchange.setArg(4, fOut[3]);
@@ -92,15 +129,25 @@ int main(){
 		lbExchange.setArg(7, fOut[7]);
 		lbExchange.setArg(8, fOut[8]);
 		
-		queue.enqueueNDRangeKernel(lbCollProp, NullRange, NDRange(nx, ny), NDRange(groupSize), NULL, &lbCollPropEvent);
+		result = queue.enqueueNDRangeKernel(lbCollProp, NullRange, NDRange(nx, ny), NDRange(groupSize), NULL, &lbCollPropEvent);
+		errCheck(result, "LBCollProp");
 		
-		queue.enqueueNDRangeKernel(lbExchange, NullRange, NDRange(ny), NDRange(groupSize), lbExchangePre);
+		result = queue.enqueueNDRangeKernel(lbExchange, NullRange, NDRange(nx, ny), NDRange(1, groupSize), &lbExchangePre, &lbExchangeEvent);
+		errCheck(result, "LBExchange");
 		
-		queue.enqueueBarrierWithWaitList();
+		result = lbExchangeEvent.wait();
+		errCheck(result, "Wait");
+		
+		std::swap(fIn, fOut);
+		
+		auto newStepTime = high_resolution_clock::now();
+		avgStepTime += newStepTime - stepTime;
+		stepTime = newStepTime;
 		
 	}
 	
 	auto stop = high_resolution_clock::now();
 	
-	std::cout << "Time: " << duration_cast<nanoseconds>(stop - start).count() << std::endl;
+	std::cout << "Time (ns): " << duration_cast<nanoseconds>(stop - start).count() << std::endl;
+	std::cout << "Average Step Time (ns): " << duration_cast<nanoseconds>(avgStepTime/numSteps).count() << std::endl;
 }
