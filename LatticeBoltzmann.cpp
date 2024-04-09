@@ -42,7 +42,8 @@ int main(){
 	sources.push_back({lattice, sizeof(lattice)-1});
 	
 	Program program(context, sources);
-	if(program.build({device}, ("-DGROUP_SIZE="+std::to_string(groupSize)).c_str()) != CL_SUCCESS){
+	std::string clArgs = "-DGROUP_SIZE="+std::to_string(groupSize);
+	if(program.build({device}, clArgs.c_str()) != CL_SUCCESS){
 		std::cout << "Error Building:\n" << program.getBuildInfo<CL_PROGRAM_BUILD_LOG>(device) << std::endl;
 		exit(1);
 	}
@@ -114,13 +115,11 @@ int main(){
 	for(int i = 0; i < numSteps; i++){
 		
 		for(int j = 0; j < 9; j++){
-			printf("%d ", j);
 			result = lbCollProp.setArg(j+5, fIn[j]);
 			errCheck(result, "LBCollProp arg "+std::to_string(j+5));
 			result = lbCollProp.setArg(j+14, fOut[j]);
 			errCheck(result, "LBCollProp arg "+std::to_string(j+14));
 		}
-		std::cout << std::endl;
 		
 		lbExchange.setArg(3, fOut[1]);
 		lbExchange.setArg(4, fOut[3]);
@@ -131,8 +130,9 @@ int main(){
 		
 		result = queue.enqueueNDRangeKernel(lbCollProp, NullRange, NDRange(nx, ny), NDRange(groupSize), NULL, &lbCollPropEvent);
 		errCheck(result, "LBCollProp");
+		lbExchangePre[0] = lbCollPropEvent;
 		
-		result = queue.enqueueNDRangeKernel(lbExchange, NullRange, NDRange(nx, ny), NDRange(1, groupSize), &lbExchangePre, &lbExchangeEvent);
+		result = queue.enqueueNDRangeKernel(lbExchange, NullRange, NDRange(nx, ny), NDRange(groupSize), &lbExchangePre, &lbExchangeEvent);
 		errCheck(result, "LBExchange");
 		
 		result = lbExchangeEvent.wait();
@@ -140,14 +140,17 @@ int main(){
 		
 		std::swap(fIn, fOut);
 		
+		std::cout << "\r [" << ceil((float)i*100/numSteps) << "%] " << i << std::flush;
+		
 		auto newStepTime = high_resolution_clock::now();
 		avgStepTime += newStepTime - stepTime;
 		stepTime = newStepTime;
 		
 	}
+	std::cout << std::endl;
 	
 	auto stop = high_resolution_clock::now();
 	
-	std::cout << "Time (ns): " << duration_cast<nanoseconds>(stop - start).count() << std::endl;
-	std::cout << "Average Step Time (ns): " << duration_cast<nanoseconds>(avgStepTime/numSteps).count() << std::endl;
+	std::cout << "Time (s): " << duration_cast<seconds>(stop - start).count() << std::endl;
+	std::cout << "Average Step Time (ms): " << duration_cast<milliseconds>(avgStepTime/numSteps).count() << std::endl;
 }
