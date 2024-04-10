@@ -1,8 +1,8 @@
 BUILD_PATH = build
 CL_PATH = cl
 
-LIB = -L C:\Users\Nathan\vcpkg\installed\x64-windows\lib -lOpencl -L lib
-INC = -I C:\Users\Nathan\vcpkg\installed\x64-windows\include
+LIB = -L C:\Users\Nathan\vcpkg\installed\x64-windows\lib -lOpencl
+INC = -I C:\Users\Nathan\vcpkg\installed\x64-windows\include -I lib
 
 SRC = $(wildcard *.cpp)
 CLSRC = $(wildcard *.cl)

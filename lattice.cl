@@ -132,16 +132,16 @@ void kernel LBCollProp(const int nx, const int ny, const float2 g, const float4 
 	}
 }
 
-void kernel LBExchange(const int nx, const int ny, const int groupWidth, global float* fe1, global float* fw1, global float* fne1, global float* fnw1, global float* fsw1, global float* fse1){
-	const int gx = get_global_id(0);
-	const int gy = get_global_id(1);
+void kernel LBExchange(const int nx, const int ny, const int numGroups, global float* fe1, global float* fw1, global float* fne1, global float* fnw1, global float* fsw1, global float* fse1){
+	const int gy = get_global_id(0);
+	const int groupWidth = GROUP_SIZE;
 	
 	int xStart, xTarget;
 	int start, target;
 	int i;
-	for(i = 0; i < groupWidth; i++){
+	for(i = 0; i < numGroups; i++){
 		xStart = i*groupWidth;
-		xTarget = xStart + groupWidth;
+		xTarget = xStart + groupWidth + 1;
 		start = nx*gy + xStart;
 		target = nx*gy + xTarget;
 		
@@ -150,9 +150,9 @@ void kernel LBExchange(const int nx, const int ny, const int groupWidth, global 
 		fsw1[target] = fsw1[start];
 	}
 	
-	for(i = groupWidth-1; i >= 0; i--){
+	for(i = numGroups-1; i >= 0; i--){
 		xTarget = i*groupWidth;
-		xStart = xTarget + groupWidth;
+		xStart = xTarget + groupWidth + 1;
 		target = nx*gy + xTarget;
 		start = nx*gy + xStart;
 		
@@ -160,4 +160,15 @@ void kernel LBExchange(const int nx, const int ny, const int groupWidth, global 
 		fne1[target] = fne1[start];
 		fse1[target] = fse1[start];
 	}
+}
+
+void kernel writeImage(const int nx, const int ny, global unsigned int* image,
+					   global float* fr1, global float* fe1, global float* fn1, global float* fw1, global float* fs1, global float* fne1, global float* fnw1, global float* fsw1, global float* fse1){
+	const int gx = get_global_id(0);
+	const int gy = get_global_id(1);
+	const int k = gy*nx + gx;
+	
+	const float f = (fr1[k]+fe1[k]+fn1[k]+fw1[k]+fs1[k]+fne1[k]+fnw1[k]+fsw1[k]+fse1[k])/9;
+	const unsigned int n = f*255;
+	image[k] = (n<<16)|(n<<8)|n;
 }
