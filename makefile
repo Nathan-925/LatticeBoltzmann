@@ -15,9 +15,6 @@ lattice: $(OBJ)
 	$(info $$^ is [$^])
 	g++ -Wall -o $@ $^ $(LIB) $(INC)
 	
-$(BUILD_PATH)/clsrc.o: $(BUILD_PATH)/clsrc.cpp
-	g++ -Wall -c -o $@ $^ $(LIB) $(INC)
-	
 $(BUILD_PATH)/%.o: %.cpp $(CLCPP) | $(BUILD_PATH)
 	g++ -Wall -c -o $@ $< $(LIB) $(INC)
 
