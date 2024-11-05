@@ -3,6 +3,7 @@
 #include <cstdint>
 #include <cmath>
 #include <string>
+#include <random>
 #include <chrono>
 #include <CL/opencl.hpp>
 #include <gif.h>
@@ -13,7 +14,7 @@ using namespace cl;
 using namespace std::chrono;
 
 enum State{
-	FLUID, SOLID
+	FLUID=0, SOLID=1, IN=2, OUT=3
 };
 
 void errCheck(cl_int err, std::string s){
@@ -53,10 +54,10 @@ int main(){
 	CommandQueue queue(context, device);
 	cl_int result;
 	
-	int nx = groupSize*3;
+	int nx = groupSize;
 	int ny = nx;
 	int numSteps = 1000;
-	cl_float2 g{0, -1};
+	cl_float2 g{0, -0.001};
 	cl_float4 s{1, 1, 1, 1};
 	
 	printf("Grid Size: %dx%d\n", nx, ny);
@@ -66,19 +67,21 @@ int main(){
 	Buffer f0[9];
 	Buffer f1[9];
 	
-	int xMin = nx/3;
-	int xMax = nx-nx/3;
-	int yMin = ny/2-ny/8;
-	int yMax = ny/2+ny/8;
+	int xCenter = nx/2;
+	int yCenter = ny/2;
+	int r = nx/4;
+	
+	std::default_random_engine rand;
+	std::uniform_real_distribution dist(1.0, 1.0);
 	
 	for(int i = 0; i < 9; i++){
 		f0[i] = Buffer(context, CL_MEM_READ_WRITE, bufferSize);
 		float* fMap = (float*)queue.enqueueMapBuffer(f0[i], true, CL_MAP_WRITE , 0, bufferSize);
 		for(int j = 0; j < nx*ny; j++){
-			int jx = j%nx;
-			int jy = j/nx;
-			if(i == 1 && jx > xMin && jx < xMax && jy > yMin && jy < yMax){
-				fMap[j] = 1;
+			int jx = xCenter - j%nx;
+			int jy = yCenter - j/nx;
+			if(i == 0 && sqrt(jx*jx + jy*jy) < r){
+				fMap[j] = dist(rand);
 			}
 			else{
 				fMap[j] = 0;
@@ -94,6 +97,19 @@ int main(){
 	for(int i = 0; i < nx*ny; i++){
 		sMap[i] = FLUID;
 	}
+	for(int i = 0; i < nx; i++){
+		sMap[i] = OUT;
+		sMap[(ny-1)*nx+i] = OUT;
+	}
+	for(int i = 0; i < ny; i++){
+		sMap[i*nx] = OUT;
+		sMap[i*nx+nx-1] = OUT;
+	}
+	/*
+	for(int i = nx/2-nx/8; i < nx/2+nx/8; i++){
+		sMap[nx+i] = IN;
+	}
+	*/
 	queue.enqueueUnmapMemObject(states, sMap);
 	
 	Buffer image(context, CL_MEM_READ_WRITE, nx*ny*sizeof(cl_uint));
@@ -120,18 +136,26 @@ int main(){
 	writeImage.setArg(1, (cl_int)ny);
 	writeImage.setArg(2, image);
 	
+	Kernel lbbc(program, "LBBC");
+	lbbc.setArg(0, (cl_int)nx);
+	lbbc.setArg(1, (cl_int)ny);
+	lbbc.setArg(2, states);
+	
 	Event lbCollPropEvent;
 	Event lbExchangeEvent;
+	Event lbbcEvent;
 	Event writeImageEvent;
 	std::vector<Event> lbExchangePre{lbCollPropEvent};
-	std::vector<Event> writeImagePre{lbExchangeEvent};
+	std::vector<Event> lbbcPre{lbExchangeEvent};
+	std::vector<Event> writeImagePre{lbbcEvent};
 	std::vector<Event> mapImagePre{writeImageEvent};
 	
 	Buffer* fIn = f0;
 	Buffer* fOut = f1;
 	
 	GifWriter gif;
-	GifBegin(&gif, "out.gif", nx, ny, 10);
+	int gifDelay = 5;
+	GifBegin(&gif, "out.gif", nx, ny, gifDelay);
 	
 	auto start = high_resolution_clock::now();
 	
@@ -145,6 +169,8 @@ int main(){
 			
 			result = writeImage.setArg(j+3, fOut[j]);
 			errCheck(result, "writeImage arg "+std::to_string(j+3));
+			
+			lbbc.setArg(j+3, fOut[j]);
 		}
 		
 		lbExchange.setArg(3, fOut[1]);
@@ -160,18 +186,19 @@ int main(){
 		
 		result = queue.enqueueNDRangeKernel(lbExchange, NullRange, NDRange(ny), NDRange(groupSize), &lbExchangePre, &lbExchangeEvent);
 		errCheck(result, "LBExchange");
-		writeImagePre[0] = lbExchangeEvent;
+		lbbcPre[0] = lbExchangeEvent;
+		
+		result = queue.enqueueNDRangeKernel(lbbc, NullRange, NDRange(nx, ny), NDRange(groupSize), &lbbcPre, &lbbcEvent);
+		errCheck(result, "LBBC");
+		writeImagePre[0] = lbbcEvent;
 		
 		result = queue.enqueueNDRangeKernel(writeImage, NullRange, NDRange(nx, ny), NDRange(groupSize), &writeImagePre, &writeImageEvent);
 		errCheck(result, "writeImage");
 		mapImagePre[0] = writeImageEvent;
 		
 		uint8_t* imgMap = (uint8_t*)queue.enqueueMapBuffer(image, true, CL_MAP_READ, 0, nx*ny*sizeof(cl_uint), &mapImagePre);
-		GifWriteFrame(&gif, imgMap, nx, ny, 10);
+		GifWriteFrame(&gif, imgMap, nx, ny, gifDelay);
 		queue.enqueueUnmapMemObject(image, imgMap);
-		
-		result = writeImageEvent.wait();
-		errCheck(result, "Wait");
 		
 		std::swap(fIn, fOut);
 		
