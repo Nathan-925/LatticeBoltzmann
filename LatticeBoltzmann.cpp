@@ -38,7 +38,8 @@ int main(){
 	std::cout << "Max Work Group Size: " << device.getInfo<CL_DEVICE_MAX_WORK_GROUP_SIZE>() << std::endl;
 	int groupSize = device.getInfo<CL_DEVICE_MAX_WORK_GROUP_SIZE>()/2;
 	std::cout << "Using Work Group Size: " << groupSize << std::endl;
-	std::cout << "Local Memory Size: " << device.getInfo<CL_DEVICE_LOCAL_MEM_SIZE >() << std::endl;
+	std::cout << "Local Memory Size: " << device.getInfo<CL_DEVICE_LOCAL_MEM_SIZE>() << std::endl;
+	std::cout << "Max Constant Args: " << device.getInfo<CL_DEVICE_MAX_CONSTANT_ARGS>() << std::endl;
 	
 	Context context({device});
 	Program::Sources sources;
